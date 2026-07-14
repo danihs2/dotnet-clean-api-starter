@@ -1,28 +1,32 @@
 # CleanApiStarter
 
-A reusable ASP.NET Core Web API starter built with Clean Architecture, JWT authentication, role-based access control, audit logging, Swagger/OpenAPI, health checks and PostgreSQL support.
+A reusable, production-minded ASP.NET Core Web API starter built on .NET 10 and a lightweight Clean Architecture. It provides authentication, role-based authorization, PostgreSQL persistence, auditing, health checks, structured errors, Swagger, Docker-based local development, and tests without imposing a business domain.
 
-This project is intentionally generic. It is not tied to any business domain and can be used as the foundation for multiple backend projects.
+## Included
 
-## Goals
+- ASP.NET Core 10 controller-based Web API.
+- Domain, Application, Infrastructure, and API layers.
+- Entity Framework Core with PostgreSQL and an initial migration.
+- JWT bearer authentication and secure password hashing.
+- Rotating, revocable refresh tokens stored only as SHA-256 hashes.
+- `SuperAdmin` and `User` roles.
+- Public user registration and protected user administration.
+- Persistent audit events for important success and failure paths.
+- Consistent API responses, correlation IDs, and centralized exception handling.
+- JSON console logging with structured fields.
+- Database-aware health checks at `/health` and `/api/health`.
+- Swagger/OpenAPI with JWT support, tags, and collapsed sections.
+- Development-only Docker Compose for PostgreSQL and the API.
+- xUnit unit and integration tests.
+- MIT license and public-repository documentation.
 
-CleanApiStarter provides a simple but professional backend foundation with:
+## Requirements
 
-* Clean Architecture structure.
-* JWT authentication.
-* Role-based access control.
-* Default `SuperAdmin` and `User` roles.
-* Audit logging.
-* Centralized exception handling.
-* Structured logging.
-* Swagger/OpenAPI with JWT support.
-* Health check endpoints.
-* PostgreSQL support.
-* Docker Compose for local development.
-* Basic tests.
-* Public-repository friendly documentation.
+- .NET SDK 10.0.109 or another compatible .NET 10 patch SDK.
+- PostgreSQL 18 or a compatible supported version.
+- Docker and Docker Compose for the container workflow.
 
-## Project Structure
+## Project structure
 
 ```text
 src/
@@ -30,281 +34,190 @@ src/
   CleanApiStarter.Application
   CleanApiStarter.Domain
   CleanApiStarter.Infrastructure
-
 tests/
   CleanApiStarter.Tests
-
 docs/
-  architecture.md
-  authentication.md
-  auditing.md
-  local-development.md
-  roadmap.md
+  docker/
 ```
 
-## Architecture
+See [Architecture](docs/architecture.md) for dependency and responsibility details.
 
-The project uses a lightweight Clean Architecture approach.
+## Quick start with Docker
 
-### Api
+This Compose file is for local development only.
 
-Responsible for:
-
-* Controllers/endpoints.
-* Middleware registration.
-* Authentication and authorization setup.
-* Swagger configuration.
-* Health checks.
-* Dependency injection composition root.
-
-### Application
-
-Responsible for:
-
-* Use cases.
-* DTOs.
-* Application services.
-* Interfaces.
-* Validation.
-* Authentication contracts.
-* Audit contracts.
-
-### Domain
-
-Responsible for:
-
-* Core entities.
-* Enums.
-* Base auditable entity.
-* User and role models.
-* Audit log model.
-* Generic domain rules.
-
-### Infrastructure
-
-Responsible for:
-
-* EF Core DbContext.
-* PostgreSQL integration.
-* Entity configurations.
-* JWT token generation.
-* Password hashing.
-* Audit persistence.
-* Database seeders.
-* Infrastructure services.
-
-## Default Roles
-
-The starter includes two default roles:
-
-### SuperAdmin
-
-Full access to all protected endpoints.
-
-### User
-
-Normal authenticated user access.
-
-Projects that use this starter can add their own roles later.
-
-## Authentication Endpoints
-
-Suggested endpoints:
-
-```http
-POST /api/auth/login
-GET /api/auth/me
+```bash
+cp .env.example .env
+docker compose -f docker-compose.dev.yml up --build -d
+docker compose -f docker-compose.dev.yml logs -f api
 ```
 
-Optional development endpoint:
+Development migrations and seed data are applied automatically when the API starts. Open:
 
-```http
-POST /api/auth/register
+- Swagger: <http://localhost:8080/swagger>
+- Health: <http://localhost:8080/health>
+- API health: <http://localhost:8080/api/health>
+
+If `API_HTTP_PORT` is changed in `.env`, use that port instead. See [Docker development](docs/docker/development.md), [commands](docs/docker/commands.md), and [troubleshooting](docs/docker/troubleshooting.md).
+
+## Run locally without the API container
+
+Start PostgreSQL, either from an existing installation or through Compose:
+
+```bash
+cp .env.example .env
+docker compose -f docker-compose.dev.yml up -d postgres
+dotnet tool restore
+dotnet restore
+dotnet run --project src/CleanApiStarter.Api --launch-profile http
 ```
 
-## Demo Authorization Endpoints
+The default local URL is <http://localhost:8080>. In `Development`, the API loads the root `.env` file without overwriting variables already provided by the operating system. Secrets and the connection string are intentionally absent from committed appsettings, so `.env` is the single local file to configure.
 
-```http
-GET /api/demo/public
-GET /api/demo/authenticated
-GET /api/demo/super-admin
+```bash
+export Jwt__Secret='replace-with-a-local-secret-at-least-32-characters-long'
+dotnet run --project src/CleanApiStarter.Api --launch-profile http
 ```
 
-Expected behavior:
+More detail is available in [Local development](docs/local-development.md).
 
-* `/api/demo/public` is accessible without authentication.
-* `/api/demo/authenticated` requires a valid JWT.
-* `/api/demo/super-admin` requires the `SuperAdmin` role.
+## Database migrations
 
-## Health Endpoints
+Development startup applies pending migrations and idempotent seed data automatically. Create and apply migrations manually with:
 
-```http
-GET /health
-GET /api/health
+```bash
+dotnet tool restore
+dotnet ef migrations add MigrationName \
+  --project src/CleanApiStarter.Infrastructure \
+  --startup-project src/CleanApiStarter.Api \
+  --output-dir Persistence/Migrations
+
+dotnet ef database update \
+  --project src/CleanApiStarter.Infrastructure \
+  --startup-project src/CleanApiStarter.Api
 ```
 
-The health check should validate that the API is running. When PostgreSQL is configured, it should also validate database connectivity.
+Automatic migration is deliberately limited to `Development`. Use an explicit reviewed migration step in every other environment.
 
-## Audit Logging
+## Authentication and default users
 
-The starter includes a reusable audit module for tracking important system events.
+Development startup creates these idempotent test accounts:
 
-Audit events may include:
+| Role | Email | Password |
+| --- | --- | --- |
+| `SuperAdmin` | `admin@example.com` | `ChangeMe123!` |
+| `User` | `user@example.com` | `ChangeMe123!` |
 
-* Login success.
-* Login failure.
-* User created.
-* Role assigned.
-* Protected action executed.
-* Process failure.
-* Unexpected exception.
+These credentials are public, local-only values. They are never seeded outside `Development` and must not be reused in a deployed environment.
 
-Suggested audit fields:
+Core endpoints:
 
 ```text
-Id
-EventType
-EntityName
-EntityId
-UserId
-UserEmail
-Role
-IpAddress
-UserAgent
-Message
-MetadataJson
-CreatedAtUtc
-Success
-ErrorCode
-ErrorMessage
+POST /api/auth/register
+POST /api/auth/login
+POST /api/auth/refresh
+POST /api/auth/revoke
+GET  /api/auth/me
+GET  /api/users
+PUT  /api/users/{id}/role
+GET  /api/audit
 ```
 
-The audit module should be reusable across future projects.
+Login and registration return an access token plus a seven-day refresh token. Refreshing rotates the token; reusing a rotated token revokes the user's remaining active refresh tokens. Public registration always assigns the `User` role. Only `SuperAdmin` can list users, change roles, view audits, or call the SuperAdmin demo. See [Authentication](docs/authentication.md).
 
-## Swagger
+## Authorization demo
 
-Swagger/OpenAPI should be available in development.
-
-The Swagger UI should include:
-
-* JWT bearer authorization.
-* Tags grouped by module:
-
-  * Auth
-  * Users
-  * Audit
-  * Demo
-  * Health
-* Collapsed operations by default to keep the UI clean.
-
-## Local Development
-
-### Requirements
-
-* .NET SDK.
-* Docker.
-* Docker Compose.
-* PostgreSQL client tools, optional.
-
-### Run PostgreSQL locally
-
-```bash
-docker compose up -d
+```text
+GET /api/demo/public       anonymous
+GET /api/demo/authenticated any valid JWT
+GET /api/demo/super-admin  SuperAdmin only
 ```
 
-### Apply migrations
+Use the `Authorize` button in Swagger and paste the access token returned by login.
 
-```bash
-dotnet ef database update --project src/CleanApiStarter.Infrastructure --startup-project src/CleanApiStarter.Api
-```
+## API response format
 
-### Run the API
-
-```bash
-dotnet run --project src/CleanApiStarter.Api
-```
-
-### Run tests
-
-```bash
-dotnet test
-```
-
-## Configuration
-
-Use environment variables or user secrets for sensitive values.
-
-Example settings:
+Successful and failed application responses use a common shape:
 
 ```json
 {
-  "ConnectionStrings": {
-    "DefaultConnection": "Host=localhost;Port=5432;Database=clean_api_starter;Username=postgres;Password=postgres"
-  },
-  "Jwt": {
-    "Issuer": "CleanApiStarter",
-    "Audience": "CleanApiStarter",
-    "Secret": "CHANGE_THIS_SECRET_FOR_DEVELOPMENT_ONLY",
-    "ExpirationMinutes": 60
-  }
+  "success": true,
+  "message": "Operation completed.",
+  "data": {},
+  "errors": null,
+  "traceId": "request-correlation-id"
 }
 ```
 
-Never commit production secrets.
+Clients may send `X-Correlation-ID`; otherwise the API creates one and returns it in the header and body. Internal exceptions are logged but stack traces are not returned.
 
-## Default Development User
+## Tests
 
-For local development, the project may seed a default SuperAdmin user.
-
-Example:
-
-```text
-Email: admin@example.com
-Password: ChangeMe123!
-Role: SuperAdmin
+```bash
+dotnet test CleanApiStarter.sln
 ```
 
-These credentials are for local development only and must be changed before production.
+Tests cover JWT claims, refresh-token generation, rotation, revocation and reuse, role constants, registration, login, authorization behavior, auditing, safe errors, correlation IDs, and health checks.
 
-## Production Checklist
+## Configuration
 
-Before using this starter in production:
+ASP.NET Core configuration precedence applies. Environment variables use double underscores, for example:
 
-* Change JWT secret.
-* Disable or protect development seed users.
-* Configure secure database credentials.
-* Configure CORS properly.
-* Review logging level.
-* Review audit retention policy.
-* Configure HTTPS.
-* Configure deployment environment variables.
-* Review Swagger exposure.
-* Add project-specific roles and permissions.
-* Add project-specific business modules.
+```text
+ConnectionStrings__DefaultConnection
+Jwt__Issuer
+Jwt__Audience
+Jwt__Secret
+Jwt__ExpirationMinutes
+Jwt__RefreshTokenExpirationDays
+Seed__SuperAdminEmail
+Seed__SuperAdminPassword
+Seed__UserEmail
+Seed__UserPassword
+```
 
-## How to Use This Starter for a New Project
+`.env` is ignored by Git. `.env.example` contains safe placeholders and the full local configuration surface. Real environment variables take precedence over values loaded from `.env`.
 
-1. Clone or fork this repository.
-2. Rename the solution and projects.
-3. Update namespaces.
-4. Update database name.
-5. Update JWT issuer and audience.
-6. Add project-specific roles.
-7. Add business modules inside the clean architecture structure.
-8. Keep authentication, audit, health checks and error handling as shared foundation.
+## Using this starter for a new project
 
-## Roadmap
+1. Use the repository as a template, fork it, or clone it without its Git history.
+2. Replace local development placeholders and database names.
+3. Add project-specific entities and use cases within the existing dependency direction.
+4. Add migrations and tests with each feature.
+5. Review every item in the production checklist below.
 
-Possible future improvements:
+To rename safely:
 
-* Refresh tokens.
-* Email confirmation.
-* Password reset.
-* Permission-based authorization.
-* Multi-tenancy.
-* Outbox pattern.
-* Background jobs.
-* Docker production profile.
-* CI pipeline.
-* API versioning.
-* Rate limiting.
+1. Replace `CleanApiStarter` in the solution, project filenames, assembly names, namespaces, Docker labels, and documentation.
+2. Rename the four `src` directories and the test directory.
+3. Update all `ProjectReference` paths and Dockerfile `COPY` paths.
+4. Update JWT issuer/audience, database name, Compose project name, and volume name.
+5. Run `dotnet restore`, `dotnet build`, `dotnet test`, and `docker compose -f docker-compose.dev.yml config`.
+6. Search for the old name with `rg -i 'CleanApiStarter|clean-api-starter|clean_api_starter'`.
+
+## Before production
+
+- Provide secrets through a managed secret store; do not deploy committed placeholders or `.env`.
+- Do not use Development or its seed credentials.
+- Apply migrations as a reviewed deployment step.
+- Configure HTTPS, forwarded headers, trusted proxies, CORS, and allowed hosts for the deployment.
+- Decide whether Swagger should be disabled or protected.
+- Configure durable log collection, alerting, audit retention, and sensitive-data policies.
+- Review token lifetime, key rotation, account lifecycle, password policy, rate limiting, and brute-force protection.
+- Apply least-privilege database credentials and current container image patches.
+- Add project-specific integration, security, and load testing.
+
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [Authentication](docs/authentication.md)
+- [Auditing](docs/auditing.md)
+- [Local development](docs/local-development.md)
+- [Roadmap](docs/roadmap.md)
+- [Docker development](docs/docker/development.md)
+- [Docker commands](docs/docker/commands.md)
+- [Docker troubleshooting](docs/docker/troubleshooting.md)
+
+## License
+
+Licensed under the [MIT License](LICENSE).
